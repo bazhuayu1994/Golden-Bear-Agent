@@ -99,13 +99,14 @@
     </div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
   <script>
     // Firebase 配置
     const firebaseConfig = {
       apiKey: "AIzaSyA6u7FBNY5s99gLooS-2KH7rS1U_09UXwQ",
       authDomain: "golden-bear-agent.firebaseapp.com",
+      databaseURL: "https://golden-bear-agent-default-rtdb.firebaseio.com",
       projectId: "golden-bear-agent",
       storageBucket: "golden-bear-agent.firebasestorage.app",
       messagingSenderId: "357829280450",
@@ -141,6 +142,7 @@
     // 从 Firebase 加载任务
     function loadTasks() {
       db.ref('tasks').on('value', (snapshot) => {
+        console.log('数据加载:', snapshot.val());
         const data = snapshot.val();
         tasks = [];
         if (data) {
@@ -225,9 +227,7 @@
         createdAt: Date.now()
       };
 
-      const newRef = db.ref('tasks').push();
-      newRef.set(newTask);
-      
+      db.ref('tasks').push(newTask);
       document.getElementById('taskInput').value = '';
       document.getElementById('dateInput').value = '';
       document.getElementById('prioritySelect').value = 'medium';
