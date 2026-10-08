@@ -57,6 +57,8 @@
     .clear-btn { padding: 12px 40px; background: rgba(255, 255, 255, 0.2); color: #fff; border: none; border-radius: 24px; font-size: 14px; cursor: pointer; }
     .loading { text-align: center; padding: 40px; }
     input[type="date"], select { font-size: 14px; }
+    .error-msg { background: #ffe5e5; color: #c62828; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
+    .success-msg { background: #e8f5e9; color: #27ae60; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
   </style>
 </head>
 <body>
@@ -91,6 +93,7 @@
         <div class="filter-btn" onclick="setFilter('high')">高优先级</div>
       </div>
     </div>
+    <div id="msgBox"></div>
     <div class="task-list" id="taskList">
       <div class="loading">加载中...</div>
     </div>
@@ -99,26 +102,23 @@
     </div>
   </div>
 
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
-    // Firebase 配置
-    const firebaseConfig = {
-      apiKey: "AIzaSyA6u7FBNY5s99gLooS-2KH7rS1U_09UXwQ",
-      authDomain: "golden-bear-agent.firebaseapp.com",
-      databaseURL: "https://golden-bear-agent-default-rtdb.firebaseio.com",
-      projectId: "golden-bear-agent",
-      storageBucket: "golden-bear-agent.firebasestorage.app",
-      messagingSenderId: "357829280450",
-      appId: "1:357829280450:web:ee1bcc242bdf4d6e68b15b"
-    };
-
-    // 初始化 Firebase
-    firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
+    // Supabase 配置
+    const SUPABASE_URL = 'https://xwmighlbpcmp tjfccqts.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_5pXjEff2fmBgEvud4lHQ5w_U7dI9LjJ';
+    
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let tasks = [];
     let currentFilter = 'all';
+
+    // 显示消息
+    function showMessage(msg, type = 'error') {
+      const msgBox = document.getElementById('msgBox');
+      msgBox.innerHTML = `<div class="${type}-msg">${msg}</div>`;
+      setTimeout(() => msgBox.innerHTML = '', 3000);
+    }
 
     // 更新日期
     function updateDate() {
@@ -139,25 +139,27 @@
       return diffDays > 0 ? diffDays : 0;
     }
 
-    // 从 Firebase 加载任务
-    function loadTasks() {
-      db.ref('tasks').on('value', (snapshot) => {
-        console.log('数据加载:', snapshot.val());
-        const data = snapshot.val();
-        tasks = [];
-        if (data) {
-          Object.keys(data).forEach(key => {
-            tasks.push({ id: key, ...data[key] });
-          });
-        }
+    // 从 Supabase 加载任务
+    async function loadTasks() {
+      try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) throw error;
+        
+        tasks = data || [];
         tasks.forEach(task => {
-          task.overdueDays = calculateOverdueDays(task.dueDate);
+          task.overdueDays = calculateOverdueDays(task.due_date);
         });
+        
         renderTasks();
         updateStats();
-      }, (error) => {
-        console.error('加载失败:', error);
-      });
+      } catch (err) {
+        console.error('加载失败:', err);
+        showMessage('加载失败: ' + err.message);
+      }
     }
 
     // 更新统计
@@ -192,7 +194,7 @@
             <span class="task-text">${escapeHtml(task.text)}</span>
             <div class="task-meta">
               <span class="priority priority-${task.priority}">${priorityMap[task.priority]}</span>
-              <span class="task-date">📅 ${task.dueDate}</span>
+              <span class="task-date">📅 ${task.due_date}</span>
               ${!task.completed && task.overdueDays > 0 ? `<span class="overdue-tag">逾期 ${task.overdueDays} 天</span>` : ''}
             </div>
           </div>
@@ -205,55 +207,103 @@
     }
 
     // 添加任务
-    function addTask() {
+    async function addTask() {
       const taskText = document.getElementById('taskInput').value.trim();
       const priority = document.getElementById('prioritySelect').value;
       const dueDate = document.getElementById('dateInput').value;
 
       if (!taskText) {
-        alert('请输入待办事项');
+        showMessage('请输入待办事项');
         return;
       }
       if (!dueDate) {
-        alert('请选择截止日期');
+        showMessage('请选择截止日期');
         return;
       }
 
-      const newTask = {
-        text: taskText,
-        completed: false,
-        priority: priority,
-        dueDate: dueDate,
-        createdAt: Date.now()
-      };
-
-      db.ref('tasks').push(newTask);
-      document.getElementById('taskInput').value = '';
-      document.getElementById('dateInput').value = '';
-      document.getElementById('prioritySelect').value = 'medium';
+      try {
+        const { data, error } = await supabase
+          .from('tasks')
+          .insert([{
+            text: taskText,
+            completed: false,
+            priority: priority,
+            due_date: dueDate,
+            created_at: new Date().toISOString()
+          }])
+          .select();
+        
+        if (error) throw error;
+        
+        tasks.unshift(data[0]);
+        document.getElementById('taskInput').value = '';
+        document.getElementById('dateInput').value = '';
+        document.getElementById('prioritySelect').value = 'medium';
+        renderTasks();
+        updateStats();
+        showMessage('添加成功！', 'success');
+      } catch (err) {
+        console.error('添加失败:', err);
+        showMessage('添加失败: ' + err.message);
+      }
     }
 
     // 切换完成状态
-    function toggleTask(id) {
-      const task = tasks.find(t => t.id === id);
-      if (task) {
-        db.ref('tasks/' + id).update({ completed: !task.completed });
+    async function toggleTask(id) {
+      try {
+        const task = tasks.find(t => t.id === id);
+        if (task) {
+          const { error } = await supabase
+            .from('tasks')
+            .update({ completed: !task.completed })
+            .eq('id', id);
+          
+          if (error) throw error;
+          
+          loadTasks();
+        }
+      } catch (err) {
+        showMessage('操作失败: ' + err.message);
       }
     }
 
     // 删除任务
-    function deleteTask(id) {
-      db.ref('tasks/' + id).remove();
+    async function deleteTask(id) {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        tasks = tasks.filter(t => t.id !== id);
+        renderTasks();
+        updateStats();
+      } catch (err) {
+        showMessage('删除失败: ' + err.message);
+      }
     }
 
     // 编辑任务
-    function editTask(id) {
+    async function editTask(id) {
       const task = tasks.find(t => t.id === id);
       if (!task) return;
       
       const newText = prompt('编辑待办内容：', task.text);
       if (newText && newText.trim()) {
-        db.ref('tasks/' + id).update({ text: newText.trim() });
+        try {
+          const { error } = await supabase
+            .from('tasks')
+            .update({ text: newText.trim() })
+            .eq('id', id);
+          
+          if (error) throw error;
+          
+          loadTasks();
+        } catch (err) {
+          showMessage('编辑失败: ' + err.message);
+        }
       }
     }
 
@@ -266,11 +316,22 @@
     }
 
     // 清除已完成
-    function clearCompleted() {
-      const completedTasks = tasks.filter(t => t.completed);
-      completedTasks.forEach(task => {
-        db.ref('tasks/' + task.id).remove();
-      });
+    async function clearCompleted() {
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('completed', true);
+        
+        if (error) throw error;
+        
+        tasks = tasks.filter(t => !t.completed);
+        renderTasks();
+        updateStats();
+        showMessage('已清除', 'success');
+      } catch (err) {
+        showMessage('清除失败: ' + err.message);
+      }
     }
 
     // 防止 XSS
