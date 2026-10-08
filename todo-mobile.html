@@ -99,6 +99,8 @@
     </div>
   </div>
 
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
   <script>
     // Firebase 配置
     const firebaseConfig = {
@@ -110,10 +112,6 @@
       appId: "1:357829280450:web:ee1bcc242bdf4d6e68b15b"
     };
 
-    // 引入 Firebase SDK
-    importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js');
-    importScripts('https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js');
-
     // 初始化 Firebase
     firebase.initializeApp(firebaseConfig);
     const db = firebase.database();
@@ -121,30 +119,11 @@
     let tasks = [];
     let currentFilter = 'all';
 
-    // 初始化
-    function init() {
-      updateDate();
-      loadTasks();
-    }
-
     // 更新日期
     function updateDate() {
       const now = new Date();
       const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
       document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN', options);
-    }
-
-    // 从 Firebase 加载任务
-    function loadTasks() {
-      db.ref('tasks').on('value', (snapshot) => {
-        const data = snapshot.val();
-        tasks = data ? Object.values(data) : [];
-        tasks.forEach(task => {
-          task.overdueDays = calculateOverdueDays(task.dueDate);
-        });
-        renderTasks();
-        updateStats();
-      });
     }
 
     // 计算逾期天数
@@ -157,6 +136,70 @@
       const diffTime = today - due;
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       return diffDays > 0 ? diffDays : 0;
+    }
+
+    // 从 Firebase 加载任务
+    function loadTasks() {
+      db.ref('tasks').on('value', (snapshot) => {
+        const data = snapshot.val();
+        tasks = [];
+        if (data) {
+          Object.keys(data).forEach(key => {
+            tasks.push({ id: key, ...data[key] });
+          });
+        }
+        tasks.forEach(task => {
+          task.overdueDays = calculateOverdueDays(task.dueDate);
+        });
+        renderTasks();
+        updateStats();
+      }, (error) => {
+        console.error('加载失败:', error);
+      });
+    }
+
+    // 更新统计
+    function updateStats() {
+      document.getElementById('totalCount').textContent = tasks.length;
+      document.getElementById('completedCount').textContent = tasks.filter(t => t.completed).length;
+      document.getElementById('clearSection').style.display = tasks.some(t => t.completed) ? 'block' : 'none';
+    }
+
+    // 渲染任务列表
+    function renderTasks() {
+      const taskList = document.getElementById('taskList');
+      let filtered = tasks;
+      
+      switch (currentFilter) {
+        case 'active': filtered = tasks.filter(t => !t.completed); break;
+        case 'completed': filtered = tasks.filter(t => t.completed); break;
+        case 'high': filtered = tasks.filter(t => t.priority === 'high'); break;
+        default: break;
+      }
+
+      if (filtered.length === 0) {
+        taskList.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${currentFilter === 'all' ? '还没有待办事项，添加一个吧！' : '没有符合条件的待办'}</div></div>`;
+        return;
+      }
+
+      const priorityMap = { high: '高优先级', medium: '中优先级', low: '低优先级' };
+      taskList.innerHTML = filtered.map(task => `
+        <div class="task-item ${task.completed ? 'completed' : ''}">
+          <div class="task-checkbox ${task.completed ? 'checked' : ''}" onclick="toggleTask('${task.id}')"></div>
+          <div class="task-content">
+            <span class="task-text">${escapeHtml(task.text)}</span>
+            <div class="task-meta">
+              <span class="priority priority-${task.priority}">${priorityMap[task.priority]}</span>
+              <span class="task-date">📅 ${task.dueDate}</span>
+              ${!task.completed && task.overdueDays > 0 ? `<span class="overdue-tag">逾期 ${task.overdueDays} 天</span>` : ''}
+            </div>
+          </div>
+          <div class="task-actions">
+            <div class="task-edit" onclick="editTask('${task.id}')">✎</div>
+            <div class="task-delete" onclick="deleteTask('${task.id}')">×</div>
+          </div>
+        </div>
+      `).join('');
     }
 
     // 添加任务
@@ -179,11 +222,12 @@
         completed: false,
         priority: priority,
         dueDate: dueDate,
-        createdAt: Date.now(),
-        overdueDays: 0
+        createdAt: Date.now()
       };
 
-      db.ref('tasks').push(newTask);
+      const newRef = db.ref('tasks').push();
+      newRef.set(newTask);
+      
       document.getElementById('taskInput').value = '';
       document.getElementById('dateInput').value = '';
       document.getElementById('prioritySelect').value = 'medium';
@@ -191,7 +235,10 @@
 
     // 切换完成状态
     function toggleTask(id) {
-      db.ref('tasks/' + id).update({ completed: !tasks.find(t => t.id === id)?.completed });
+      const task = tasks.find(t => t.id === id);
+      if (task) {
+        db.ref('tasks/' + id).update({ completed: !task.completed });
+      }
     }
 
     // 删除任务
@@ -203,6 +250,7 @@
     function editTask(id) {
       const task = tasks.find(t => t.id === id);
       if (!task) return;
+      
       const newText = prompt('编辑待办内容：', task.text);
       if (newText && newText.trim()) {
         db.ref('tasks/' + id).update({ text: newText.trim() });
@@ -217,69 +265,24 @@
       renderTasks();
     }
 
-    // 过滤任务
-    function getFilteredTasks() {
-      let filtered = tasks;
-      switch (currentFilter) {
-        case 'active': filtered = tasks.filter(t => !t.completed); break;
-        case 'completed': filtered = tasks.filter(t => t.completed); break;
-        case 'high': filtered = tasks.filter(t => t.priority === 'high'); break;
-        default: break;
-      }
-      return filtered;
-    }
-
-    // 渲染任务列表
-    function renderTasks() {
-      const taskList = document.getElementById('taskList');
-      const filtered = getFilteredTasks();
-
-      if (filtered.length === 0) {
-        taskList.innerHTML = `
-          <div class="empty-state">
-            <div class="empty-icon">📋</div>
-            <div class="empty-text">${currentFilter === 'all' ? '还没有待办事项，添加一个吧！' : '没有符合条件的待办'}</div>
-          </div>
-        `;
-        return;
-      }
-
-      taskList.innerHTML = filtered.map(task => {
-        const priorityMap = { high: '高优先级', medium: '中优先级', low: '低优先级' };
-        return `
-          <div class="task-item ${task.completed ? 'completed' : ''}">
-            <div class="task-checkbox ${task.completed ? 'checked' : ''}" onclick="toggleTask('${task.id}')"></div>
-            <div class="task-content">
-              <span class="task-text">${task.text}</span>
-              <div class="task-meta">
-                <span class="priority priority-${task.priority}">${priorityMap[task.priority]}</span>
-                <span class="task-date">📅 ${task.dueDate}</span>
-                ${!task.completed && task.overdueDays > 0 ? `<span class="overdue-tag">逾期 ${task.overdueDays} 天</span>` : ''}
-              </div>
-            </div>
-            <div class="task-actions">
-              <div class="task-edit" onclick="editTask('${task.id}')">✎</div>
-              <div class="task-delete" onclick="deleteTask('${task.id}')">×</div>
-            </div>
-          </div>
-        `;
-      }).join('');
-    }
-
-    // 更新统计
-    function updateStats() {
-      document.getElementById('totalCount').textContent = tasks.length;
-      document.getElementById('completedCount').textContent = tasks.filter(t => t.completed).length;
-      document.getElementById('clearSection').style.display = tasks.some(t => t.completed) ? 'block' : 'none';
-    }
-
     // 清除已完成
     function clearCompleted() {
-      const completedIds = tasks.filter(t => t.completed).map(t => t.id);
-      completedIds.forEach(id => db.ref('tasks/' + id).remove());
+      const completedTasks = tasks.filter(t => t.completed);
+      completedTasks.forEach(task => {
+        db.ref('tasks/' + task.id).remove();
+      });
     }
 
-    init();
+    // 防止 XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 初始化
+    updateDate();
+    loadTasks();
   </script>
 </body>
 </html>
