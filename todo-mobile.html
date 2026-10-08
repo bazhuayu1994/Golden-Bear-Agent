@@ -108,7 +108,17 @@
     const SUPABASE_URL = 'https://xwmighlbpcmp tjfccqts.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_5pXjEff2fmBgEvud4lHQ5w_U7dI9LjJ';
     
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    console.log('初始化 Supabase...');
+    console.log('URL:', SUPABASE_URL);
+    
+    let supabase;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      console.log('Supabase 初始化成功');
+    } catch(e) {
+      console.error('Supabase 初始化失败:', e);
+      showError('初始化失败: ' + e.message);
+    }
 
     let tasks = [];
     let currentFilter = 'all';
@@ -141,14 +151,24 @@
 
     // 从 Supabase 加载任务
     async function loadTasks() {
+      if (!supabase) {
+        showMessage('Supabase 未初始化');
+        return;
+      }
+      
       try {
+        console.log('开始加载任务...');
         const { data, error } = await supabase
           .from('tasks')
           .select('*')
           .order('created_at', { ascending: false });
         
-        if (error) throw error;
+        if (error) {
+          console.error('加载错误:', error);
+          throw error;
+        }
         
+        console.log('加载成功，数据:', data);
         tasks = data || [];
         tasks.forEach(task => {
           task.overdueDays = calculateOverdueDays(task.due_date);
@@ -208,6 +228,11 @@
 
     // 添加任务
     async function addTask() {
+      if (!supabase) {
+        showMessage('Supabase 未初始化');
+        return;
+      }
+      
       const taskText = document.getElementById('taskInput').value.trim();
       const priority = document.getElementById('prioritySelect').value;
       const dueDate = document.getElementById('dateInput').value;
@@ -222,6 +247,7 @@
       }
 
       try {
+        console.log('添加任务:', { text: taskText, priority, dueDate });
         const { data, error } = await supabase
           .from('tasks')
           .insert([{
@@ -233,8 +259,12 @@
           }])
           .select();
         
-        if (error) throw error;
+        if (error) {
+          console.error('添加错误:', error);
+          throw error;
+        }
         
+        console.log('添加成功:', data);
         tasks.unshift(data[0]);
         document.getElementById('taskInput').value = '';
         document.getElementById('dateInput').value = '';
@@ -250,6 +280,8 @@
 
     // 切换完成状态
     async function toggleTask(id) {
+      if (!supabase) return;
+      
       try {
         const task = tasks.find(t => t.id === id);
         if (task) {
@@ -269,6 +301,8 @@
 
     // 删除任务
     async function deleteTask(id) {
+      if (!supabase) return;
+      
       try {
         const { error } = await supabase
           .from('tasks')
@@ -287,6 +321,8 @@
 
     // 编辑任务
     async function editTask(id) {
+      if (!supabase) return;
+      
       const task = tasks.find(t => t.id === id);
       if (!task) return;
       
@@ -317,6 +353,8 @@
 
     // 清除已完成
     async function clearCompleted() {
+      if (!supabase) return;
+      
       try {
         const { error } = await supabase
           .from('tasks')
@@ -332,6 +370,12 @@
       } catch (err) {
         showMessage('清除失败: ' + err.message);
       }
+    }
+
+    // 显示错误
+    function showError(msg) {
+      const msgBox = document.getElementById('msgBox');
+      msgBox.innerHTML = `<div class="error-msg">${msg}</div>`;
     }
 
     // 防止 XSS
