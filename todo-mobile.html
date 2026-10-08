@@ -102,13 +102,13 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.js"></script>
   <script>
     // Supabase 配置
     const SUPABASE_URL = 'https://xwmighlbpcmp tjfccqts.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_5pXjEff2fmBgEvud4lHQ5w_U7dI9LjJ';
     
-    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
     let tasks = [];
     let currentFilter = 'all';
