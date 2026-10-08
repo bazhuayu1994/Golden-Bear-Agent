@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>待办小助手</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+      color: #fff;
+    }
+    .container { max-width: 480px; margin: 0 auto; }
+    .header { text-align: center; padding: 30px 0; }
+    .header h1 { font-size: 28px; margin-bottom: 8px; }
+    .header .date { font-size: 14px; opacity: 0.9; }
+    .stats { display: flex; justify-content: center; gap: 16px; margin-bottom: 20px; }
+    .stat { background: rgba(255, 255, 255, 0.2); padding: 12px 24px; border-radius: 20px; font-size: 14px; }
+    .input-section { background: #fff; border-radius: 16px; padding: 20px; margin-bottom: 16px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1); }
+    .input-row { display: flex; gap: 12px; margin-bottom: 12px; }
+    .task-input { flex: 1; padding: 14px 16px; border: 2px solid #e0e0e0; border-radius: 12px; font-size: 16px; background: #fff; color: #333; outline: none; }
+    .task-input:focus { border-color: #667eea; }
+    .add-btn { padding: 14px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 600; cursor: pointer; }
+    .options { display: flex; gap: 12px; }
+    .picker { flex: 1; padding: 12px 16px; background: #f5f5f5; border-radius: 10px; font-size: 14px; color: #666; text-align: center; }
+    .filter-scroll { overflow-x: auto; white-space: nowrap; margin-bottom: 16px; }
+    .filter-section { display: inline-flex; gap: 10px; padding: 4px 0; }
+    .filter-btn { display: inline-block; padding: 10px 20px; background: rgba(255, 255, 255, 0.2); color: #fff; border-radius: 20px; font-size: 14px; cursor: pointer; }
+    .filter-btn.active { background: #fff; color: #667eea; font-weight: 600; }
+    .task-list { display: flex; flex-direction: column; gap: 12px; }
+    .task-item { background: #fff; border-radius: 16px; padding: 16px; display: flex; align-items: center; gap: 12px; }
+    .task-item.completed { opacity: 0.6; }
+    .task-checkbox { width: 24px; height: 24px; border: 2px solid #667eea; border-radius: 50%; cursor: pointer; }
+    .task-checkbox.checked { background: #667eea; }
+    .task-checkbox.checked::after { content: "✓"; color: #fff; font-size: 14px; font-weight: bold; display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+    .task-content { flex: 1; min-width: 0; }
+    .task-text { display: block; font-size: 16px; color: #333; margin-bottom: 6px; }
+    .task-item.completed .task-text { text-decoration: line-through; color: #999; }
+    .task-meta { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .priority { font-size: 12px; padding: 4px 10px; border-radius: 10px; font-weight: 500; }
+    .priority-high { background: #ffe5e5; color: #e74c3c; }
+    .priority-medium { background: #fff3e0; color: #f39c12; }
+    .priority-low { background: #e8f5e9; color: #27ae60; }
+    .task-date { font-size: 12px; color: #666; }
+    .overdue-tag { font-size: 12px; padding: 4px 10px; border-radius: 10px; background: #ffebee; color: #c62828; font-weight: 500; }
+    .task-actions { display: flex; gap: 8px; }
+    .task-edit, .task-delete { width: 32px; height: 32px; border-radius: 8px; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; }
+    .task-edit { background: #e3f2fd; color: #2196f3; }
+    .task-delete { background: #ffe5e5; color: #e74c3c; }
+    .empty-state { text-align: center; padding: 60px 20px; }
+    .empty-icon { font-size: 64px; margin-bottom: 16px; }
+    .empty-text { font-size: 14px; opacity: 0.9; }
+    .clear-section { text-align: center; margin-top: 24px; }
+    .clear-btn { padding: 12px 40px; background: rgba(255, 255, 255, 0.2); color: #fff; border: none; border-radius: 24px; font-size: 14px; cursor: pointer; }
+    .loading { text-align: center; padding: 40px; }
+    input[type="date"], select { font-size: 14px; }
+    .error-msg { background: #ffe5e5; color: #c62828; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
+    .success-msg { background: #e8f5e9; color: #27ae60; padding: 10px; border-radius: 8px; margin: 10px 0; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📝 待办小助手</h1>
+      <div class="date" id="currentDate"></div>
+    </div>
+    <div class="stats">
+      <div class="stat">总计: <span id="totalCount">0</span></div>
+      <div class="stat">完成: <span id="completedCount">0</span></div>
+    </div>
+    <div class="input-section">
+      <div class="input-row">
+        <input type="text" class="task-input" id="taskInput" placeholder="添加新的待办事项...">
+        <button class="add-btn" onclick="addTask()">添加</button>
+      </div>
+      <div class="options">
+        <select class="picker" id="prioritySelect">
+          <option value="low">低优先级</option>
+          <option value="medium" selected>中优先级</option>
+          <option value="high">高优先级</option>
+        </select>
+        <input type="date" class="picker" id="dateInput">
+      </div>
+    </div>
+    <div class="filter-scroll">
+      <div class="filter-section">
+        <div class="filter-btn active" onclick="setFilter('all')">全部</div>
+        <div class="filter-btn" onclick="setFilter('active')">未完成</div>
+        <div class="filter-btn" onclick="setFilter('completed')">已完成</div>
+        <div class="filter-btn" onclick="setFilter('high')">高优先级</div>
+      </div>
+    </div>
+    <div id="msgBox"></div>
+    <div class="task-list" id="taskList">
+      <div class="loading">加载中...</div>
+    </div>
+    <div class="clear-section" id="clearSection" style="display: none;">
+      <button class="clear-btn" onclick="clearCompleted()">清除已完成</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.39.0/dist/umd/supabase.js"></script>
+  <script>
+    // Supabase 配置
+    const SUPABASE_URL = 'https://xwmighlbpcmp tjfccqts.supabase.co';
+    const SUPABASE_KEY = 'sb_publishable_5pXjEff2fmBgEvud4lHQ5w_U7dI9LjJ';
+    
+    console.log('初始化 Supabase...');
+    console.log('URL:', SUPABASE_URL);
+    
+    let supabase;
+    try {
+      supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+      console.log('Supabase 初始化成功');
+    } catch(e) {
+      console.error('Supabase 初始化失败:', e);
+      showError('初始化失败: ' + e.message);
+    }
+
+    let tasks = [];
+    let currentFilter = 'all';
+
+    // 显示消息
+    function showMessage(msg, type = 'error') {
+      const msgBox = document.getElementById('msgBox');
+      msgBox.innerHTML = `<div class="${type}-msg">${msg}</div>`;
+      setTimeout(() => msgBox.innerHTML = '', 3000);
+    }
+
+    // 更新日期
+    function updateDate() {
+      const now = new Date();
+      const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+      document.getElementById('currentDate').textContent = now.toLocaleDateString('zh-CN', options);
+    }
+
+    // 计算逾期天数
+    function calculateOverdueDays(dueDate) {
+      if (!dueDate) return 0;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const due = new Date(dueDate);
+      due.setHours(0, 0, 0, 0);
+      const diffTime = today - due;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays > 0 ? diffDays : 0;
+    }
+
+    // 从 Supabase 加载任务
+    async function loadTasks() {
+      if (!supabase) {
+        showMessage('Supabase 未初始化');
+        return;
+      }
+      
+      try {
+        console.log('开始加载任务...');
+        const { data, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .order('created_at', { ascending: false });
+        
+        if (error) {
+          console.error('加载错误:', error);
+          throw error;
+        }
+        
+        console.log('加载成功，数据:', data);
+        tasks = data || [];
+        tasks.forEach(task => {
+          task.overdueDays = calculateOverdueDays(task.due_date);
+        });
+        
+        renderTasks();
+        updateStats();
+      } catch (err) {
+        console.error('加载失败:', err);
+        showMessage('加载失败: ' + err.message);
+      }
+    }
+
+    // 更新统计
+    function updateStats() {
+      document.getElementById('totalCount').textContent = tasks.length;
+      document.getElementById('completedCount').textContent = tasks.filter(t => t.completed).length;
+      document.getElementById('clearSection').style.display = tasks.some(t => t.completed) ? 'block' : 'none';
+    }
+
+    // 渲染任务列表
+    function renderTasks() {
+      const taskList = document.getElementById('taskList');
+      let filtered = tasks;
+      
+      switch (currentFilter) {
+        case 'active': filtered = tasks.filter(t => !t.completed); break;
+        case 'completed': filtered = tasks.filter(t => t.completed); break;
+        case 'high': filtered = tasks.filter(t => t.priority === 'high'); break;
+        default: break;
+      }
+
+      if (filtered.length === 0) {
+        taskList.innerHTML = `<div class="empty-state"><div class="empty-icon">📋</div><div class="empty-text">${currentFilter === 'all' ? '还没有待办事项，添加一个吧！' : '没有符合条件的待办'}</div></div>`;
+        return;
+      }
+
+      const priorityMap = { high: '高优先级', medium: '中优先级', low: '低优先级' };
+      taskList.innerHTML = filtered.map(task => `
+        <div class="task-item ${task.completed ? 'completed' : ''}">
+          <div class="task-checkbox ${task.completed ? 'checked' : ''}" onclick="toggleTask('${task.id}')"></div>
+          <div class="task-content">
+            <span class="task-text">${escapeHtml(task.text)}</span>
+            <div class="task-meta">
+              <span class="priority priority-${task.priority}">${priorityMap[task.priority]}</span>
+              <span class="task-date">📅 ${task.due_date}</span>
+              ${!task.completed && task.overdueDays > 0 ? `<span class="overdue-tag">逾期 ${task.overdueDays} 天</span>` : ''}
+            </div>
+          </div>
+          <div class="task-actions">
+            <div class="task-edit" onclick="editTask('${task.id}')">✎</div>
+            <div class="task-delete" onclick="deleteTask('${task.id}')">×</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // 添加任务
+    async function addTask() {
+      if (!supabase) {
+        showMessage('Supabase 未初始化');
+        return;
+      }
+      
+      const taskText = document.getElementById('taskInput').value.trim();
+      const priority = document.getElementById('prioritySelect').value;
+      const dueDate = document.getElementById('dateInput').value;
+
+      if (!taskText) {
+        showMessage('请输入待办事项');
+        return;
+      }
+      if (!dueDate) {
+        showMessage('请选择截止日期');
+        return;
+      }
+
+      try {
+        console.log('添加任务:', { text: taskText, priority, dueDate });
+        const { data, error } = await supabase
+          .from('tasks')
+          .insert([{
+            text: taskText,
+            completed: false,
+            priority: priority,
+            due_date: dueDate,
+            created_at: new Date().toISOString()
+          }])
+          .select();
+        
+        if (error) {
+          console.error('添加错误:', error);
+          throw error;
+        }
+        
+        console.log('添加成功:', data);
+        tasks.unshift(data[0]);
+        document.getElementById('taskInput').value = '';
+        document.getElementById('dateInput').value = '';
+        document.getElementById('prioritySelect').value = 'medium';
+        renderTasks();
+        updateStats();
+        showMessage('添加成功！', 'success');
+      } catch (err) {
+        console.error('添加失败:', err);
+        showMessage('添加失败: ' + err.message);
+      }
+    }
+
+    // 切换完成状态
+    async function toggleTask(id) {
+      if (!supabase) return;
+      
+      try {
+        const task = tasks.find(t => t.id === id);
+        if (task) {
+          const { error } = await supabase
+            .from('tasks')
+            .update({ completed: !task.completed })
+            .eq('id', id);
+          
+          if (error) throw error;
+          
+          loadTasks();
+        }
+      } catch (err) {
+        showMessage('操作失败: ' + err.message);
+      }
+    }
+
+    // 删除任务
+    async function deleteTask(id) {
+      if (!supabase) return;
+      
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('id', id);
+        
+        if (error) throw error;
+        
+        tasks = tasks.filter(t => t.id !== id);
+        renderTasks();
+        updateStats();
+      } catch (err) {
+        showMessage('删除失败: ' + err.message);
+      }
+    }
+
+    // 编辑任务
+    async function editTask(id) {
+      if (!supabase) return;
+      
+      const task = tasks.find(t => t.id === id);
+      if (!task) return;
+      
+      const newText = prompt('编辑待办内容：', task.text);
+      if (newText && newText.trim()) {
+        try {
+          const { error } = await supabase
+            .from('tasks')
+            .update({ text: newText.trim() })
+            .eq('id', id);
+          
+          if (error) throw error;
+          
+          loadTasks();
+        } catch (err) {
+          showMessage('编辑失败: ' + err.message);
+        }
+      }
+    }
+
+    // 筛选
+    function setFilter(filter) {
+      currentFilter = filter;
+      document.querySelectorAll('.filter-btn').forEach(btn => btn.classList.remove('active'));
+      event.target.classList.add('active');
+      renderTasks();
+    }
+
+    // 清除已完成
+    async function clearCompleted() {
+      if (!supabase) return;
+      
+      try {
+        const { error } = await supabase
+          .from('tasks')
+          .delete()
+          .eq('completed', true);
+        
+        if (error) throw error;
+        
+        tasks = tasks.filter(t => !t.completed);
+        renderTasks();
+        updateStats();
+        showMessage('已清除', 'success');
+      } catch (err) {
+        showMessage('清除失败: ' + err.message);
+      }
+    }
+
+    // 显示错误
+    function showError(msg) {
+      const msgBox = document.getElementById('msgBox');
+      msgBox.innerHTML = `<div class="error-msg">${msg}</div>`;
+    }
+
+    // 防止 XSS
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    // 初始化
+    updateDate();
+    loadTasks();
+  </script>
+</body>
+</html>
